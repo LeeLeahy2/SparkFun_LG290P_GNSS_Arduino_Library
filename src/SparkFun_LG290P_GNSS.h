@@ -1451,7 +1451,9 @@ class LG290P
     }
     void ensurePppNavEnabled()
     {
-        ensureMsgEnabled(devState.pppnavRate > 0, "PQTMPPPNAV", 1);
+        // PPPNAV not available on firmware < 201
+        if (firmwareVersionInt >= 201)
+            ensureMsgEnabled(devState.pppnavRate > 0, "PQTMPPPNAV", 1);
     }
     void ensureEpeEnabled()
     {
