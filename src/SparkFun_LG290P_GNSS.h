@@ -67,16 +67,8 @@ class LG290P
 
     struct
     {
-        int mode = -1,
-            ggaRate = -1,
-            rmcRate = -1,
-            pvtRate = -1,
-            plRate = -1,
-            epeRate = -1,
-            svinstatusRate = -1,
-            gsvRate = -1,
-            gstRate = -1,
-            pppnavRate = -1;
+        int mode = -1, ggaRate = -1, rmcRate = -1, pvtRate = -1, plRate = -1, epeRate = -1, svinstatusRate = -1,
+            gsvRate = -1, gstRate = -1, pppnavRate = -1;
     } devState;
 
     enum
@@ -92,7 +84,7 @@ class LG290P
         SURVEYFIXED = 2
     };
 
-public:
+  public:
     /** Handshaking and Client interface **/
 
     /**
@@ -104,11 +96,8 @@ public:
      * @param debugOutput if provided, address of a routine to output a debug character
      * @return true if the initialization succeeded
      */
-    bool begin(HardwareSerial &serialPort,
-               const char * parserName,
-               SEMP_OUTPUT errorOutput = nullptr,
-               Print *parserDebug = nullptr,
-               SEMP_OUTPUT debugOutput = nullptr);
+    bool begin(HardwareSerial &serialPort, const char *parserName, SEMP_OUTPUT errorOutput = nullptr,
+               Print *parserDebug = nullptr, SEMP_OUTPUT debugOutput = nullptr);
 
     /**
      * @brief Starts the LG290P engine. Does not require open serial port. Tests various likely baud rates
@@ -121,12 +110,8 @@ public:
      * @param debugOutput if provided, address of a routine to output a debug character
      * @return true if the initialization succeeded
      */
-    bool beginAutoBaudDetect(HardwareSerial &serialPort,
-                             int rxPin,
-                             int txPin,
-                             const char * parserName,
-                             SEMP_OUTPUT errorOutput = nullptr,
-                             Print *parserError = &Serial,
+    bool beginAutoBaudDetect(HardwareSerial &serialPort, int rxPin, int txPin, const char *parserName,
+                             SEMP_OUTPUT errorOutput = nullptr, Print *parserError = &Serial,
                              SEMP_OUTPUT debugOutput = nullptr);
 
     /**
@@ -1179,7 +1164,8 @@ public:
 
     /**
      * @brief Returns the Solution Type from PPPNAV
-     * @return 0 = Not fixed, 1 = Single, 2 = Differential, 3 = Fixed or Survey In, 5 = Pseudorange Differential, 6 = PPP converging, 7 = PPP converged, 8 = RTK Float, 12 = RTK Fixed
+     * @return 0 = Not fixed, 1 = Single, 2 = Differential, 3 = Fixed or Survey In, 5 = Pseudorange Differential, 6 =
+     * PPP converging, 7 = PPP converged, 8 = RTK Float, 12 = RTK Fixed
      */
     int getPppSolutionType()
     {
@@ -1189,7 +1175,8 @@ public:
 
     /**
      * @brief Returns the DiffID from PPPNAV
-     * @return 0 to 9999: The differential reference station ID for the PPP result based on B2b PPP is 9001. The differential reference station ID for the PPP result based on E6 HAS is 9002.
+     * @return 0 to 9999: The differential reference station ID for the PPP result based on B2b PPP is 9001. The
+     * differential reference station ID for the PPP result based on E6 HAS is 9002.
      */
     int getPppDifferentialId()
     {
@@ -1218,7 +1205,7 @@ public:
      */
     bool setPppSettings(int mode, int datum = 1, int timeout = 120, float horstd = 0.1, float verstd = 0.15);
 
-        /**
+    /**
      * @brief Get the current HAS or B2b high accuracy service settings.
      * @param mode High accuracy service mode: 0 = Disable, 1 = HAS, 2 = B2b PPP, 0xFF = Auto
      * @param datum Datum ID: 1 = WGS84, 2 = PPP Original, 3 = CGCS2000
@@ -1420,7 +1407,7 @@ public:
     char *getCompileTime();
 #endif
 
-private:
+  private:
     // Firmware version
     int firmwareVersionInt = 0;
     const char *firmwareVersionPrefix = "LG290P03AANR";

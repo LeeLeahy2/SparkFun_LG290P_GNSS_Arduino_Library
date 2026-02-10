@@ -22,8 +22,7 @@
 #define LG290P_RTCM_PARSER_INDEX 1
 
 // Build the table listing all of the parsers
-static const SEMP_PARSER_DESCRIPTION * lg290pParserTable[] =
-{
+static const SEMP_PARSER_DESCRIPTION *lg290pParserTable[] = {
     &sempNmeaParserDescription,
     &sempRtcmParserDescription,
 };
@@ -99,11 +98,8 @@ bool LG290P::badNmeaChecksum(SEMP_PARSE_STATE *parse)
 // LG290P support routines
 //----------------------------------------
 
-bool LG290P::begin(HardwareSerial &serialPort,
-                   const char * parserName,
-                   SEMP_OUTPUT errorOutput /* = nullptr */,
-                   Print *parserDebug /* = nullptr */,
-                   SEMP_OUTPUT debugOutput /* = nullptr */)
+bool LG290P::begin(HardwareSerial &serialPort, const char *parserName, SEMP_OUTPUT errorOutput /* = nullptr */,
+                   Print *parserDebug /* = nullptr */, SEMP_OUTPUT debugOutput /* = nullptr */)
 {
     ptrLG290P = this;
     _hwSerialPort = &serialPort;
@@ -111,11 +107,9 @@ bool LG290P::begin(HardwareSerial &serialPort,
 
     // Initialize the parser
     size_t bufferLength = sempGetBufferLength(lg290pParserTable, lg290pParserCount, BUFFER_LENGTH);
-    uint8_t * buffer = (uint8_t *)malloc(bufferLength);
-    _sempParse =
-        sempBeginParser(parserName, lg290pParserTable, lg290pParserCount,
-                        buffer, bufferLength, LG290PProcessMessage,
-                        errorOutput, debugOutput, badNmeaChecksum);
+    uint8_t *buffer = (uint8_t *)malloc(bufferLength);
+    _sempParse = sempBeginParser(parserName, lg290pParserTable, lg290pParserCount, buffer, bufferLength,
+                                 LG290PProcessMessage, errorOutput, debugOutput, badNmeaChecksum);
     if (!_sempParse)
     {
         debugPrintf("LG290P Lib: Failed to initialize the parser!");
@@ -130,14 +124,16 @@ bool LG290P::begin(HardwareSerial &serialPort,
     int firmwareVersionMinor = 0;
     ok = ok && getFirmwareVersionMajor(firmwareVersionMajor);
     ok = ok && getFirmwareVersionMinor(firmwareVersionMinor);
-    firmwareVersionInt = (firmwareVersionMajor * 100) + firmwareVersionMinor; //v2.16 becomes 216
-    
+    firmwareVersionInt = (firmwareVersionMajor * 100) + firmwareVersionMinor; // v2.16 becomes 216
+
     if (ok)
     {
-        debugPrintf("Firmware version is %d.%d %s", firmwareVersionMajor, firmwareVersionMinor, firmwareVersionInt == 0 ? " (Unknown)" : "");
-        debugPrintf("Starting with %s mode, GGA %d RMC %d EPE %d PVT %d PL %d SVIN %d GSV %d GST %d PPPNAV %d", 
-            devState.mode == BASEMODE ? "BASE" : "ROVER", devState.ggaRate, devState.rmcRate, devState.epeRate, 
-            devState.pvtRate, devState.plRate, devState.svinstatusRate, devState.gsvRate, devState.gstRate, devState.pppnavRate);
+        debugPrintf("Firmware version is %d.%d %s", firmwareVersionMajor, firmwareVersionMinor,
+                    firmwareVersionInt == 0 ? " (Unknown)" : "");
+        debugPrintf("Starting with %s mode, GGA %d RMC %d EPE %d PVT %d PL %d SVIN %d GSV %d GST %d PPPNAV %d",
+                    devState.mode == BASEMODE ? "BASE" : "ROVER", devState.ggaRate, devState.rmcRate, devState.epeRate,
+                    devState.pvtRate, devState.plRate, devState.svinstatusRate, devState.gsvRate, devState.gstRate,
+                    devState.pppnavRate);
     }
     else
     {
@@ -149,18 +145,14 @@ bool LG290P::begin(HardwareSerial &serialPort,
     return ok;
 }
 
-bool LG290P::beginAutoBaudDetect(HardwareSerial &serialPort,
-                                 int rxPin,
-                                 int txPin,
-                                 const char * parserName,
-                                 SEMP_OUTPUT errorOutput /* = nullptr */,
-                                 Print *parserDebug /* = nullptr */,
+bool LG290P::beginAutoBaudDetect(HardwareSerial &serialPort, int rxPin, int txPin, const char *parserName,
+                                 SEMP_OUTPUT errorOutput /* = nullptr */, Print *parserDebug /* = nullptr */,
                                  SEMP_OUTPUT debugOutput /* = nullptr */)
 {
     serialPort.setRxBufferSize(4096);
     _debugPort = parserDebug;
 
-    for (int baud: {460800, 921600, 230400, 115200, 9600})
+    for (int baud : {460800, 921600, 230400, 115200, 9600})
     {
         debugPrintf("Trying baud rate %d...", baud);
         serialPort.begin(baud, SERIAL_8N1, rxPin, txPin);
@@ -222,7 +214,7 @@ bool LG290P::update()
 }
 
 // Process a buffer of bytes. Allows a stream outside of library to feed the library.
-bool LG290P::update(uint8_t* incomingBuffer, uint16_t bufferLength)
+bool LG290P::update(uint8_t *incomingBuffer, uint16_t bufferLength)
 {
     bool newData = false;
 
@@ -608,8 +600,8 @@ bool LG290P::getFirmwareVersion(int &version)
     int firmwareVersionMinor = 0;
     ok &= getFirmwareVersionMajor(firmwareVersionMajor);
     ok &= getFirmwareVersionMinor(firmwareVersionMinor);
-    
-    version = (firmwareVersionMajor * 100) + firmwareVersionMinor; //v2.16 becomes 216
+
+    version = (firmwareVersionMajor * 100) + firmwareVersionMinor; // v2.16 becomes 216
 
     return (ok);
 }
@@ -684,15 +676,24 @@ bool LG290P::setMessageRate(const char *msgName, int rate, int msgVer)
     if (ret)
     {
         std::string str = msgName;
-        if (str == "GGA") devState.ggaRate = rate;
-        else if (str == "RMC") devState.rmcRate = rate;
-        else if (str == "PQTMPVT") devState.pvtRate = rate;
-        else if (str == "PQTMPL") devState.plRate = rate;
-        else if (str == "PQTMSVINSTATUS") devState.svinstatusRate = rate;
-        else if (str == "PQTMEPE") devState.epeRate = rate;
-        else if (str == "GSV") devState.gsvRate = rate;
-        else if (str == "GST") devState.gstRate = rate;
-        else if (str == "PQTMPPPNAV") devState.pppnavRate = rate;
+        if (str == "GGA")
+            devState.ggaRate = rate;
+        else if (str == "RMC")
+            devState.rmcRate = rate;
+        else if (str == "PQTMPVT")
+            devState.pvtRate = rate;
+        else if (str == "PQTMPL")
+            devState.plRate = rate;
+        else if (str == "PQTMSVINSTATUS")
+            devState.svinstatusRate = rate;
+        else if (str == "PQTMEPE")
+            devState.epeRate = rate;
+        else if (str == "GSV")
+            devState.gsvRate = rate;
+        else if (str == "GST")
+            devState.gstRate = rate;
+        else if (str == "PQTMPPPNAV")
+            devState.pppnavRate = rate;
     }
     return ret;
 }
@@ -703,22 +704,32 @@ bool LG290P::setMessageRate(const char *msgName, int rate, int msgVer)
 bool LG290P::setMessageRateOnPort(const char *msgName, int rate, int portNumber, int msgVer)
 {
     char parms[50];
-    snprintf(parms, sizeof parms, msgVer == -1 ? ",W,1,%d,%s,%d" : ",W,1,%d,%s,%d,%d", portNumber, msgName, rate, msgVer);
+    snprintf(parms, sizeof parms, msgVer == -1 ? ",W,1,%d,%s,%d" : ",W,1,%d,%s,%d,%d", portNumber, msgName, rate,
+             msgVer);
     bool ret = sendOkCommand("PQTMCFGMSGRATE", parms);
 
     // We internally track whether certain important sentences are enabled
     if (ret)
     {
         std::string str = msgName;
-        if (str == "GGA") devState.ggaRate = rate;
-        else if (str == "RMC") devState.rmcRate = rate;
-        else if (str == "PQTMPVT") devState.pvtRate = rate;
-        else if (str == "PQTMPL") devState.plRate = rate;
-        else if (str == "PQTMSVINSTATUS") devState.svinstatusRate = rate;
-        else if (str == "PQTMEPE") devState.epeRate = rate;
-        else if (str == "GSV") devState.gsvRate = rate;
-        else if (str == "GST") devState.gstRate = rate;
-        else if (str == "PQTMPPPNAV") devState.pppnavRate = rate;
+        if (str == "GGA")
+            devState.ggaRate = rate;
+        else if (str == "RMC")
+            devState.rmcRate = rate;
+        else if (str == "PQTMPVT")
+            devState.pvtRate = rate;
+        else if (str == "PQTMPL")
+            devState.plRate = rate;
+        else if (str == "PQTMSVINSTATUS")
+            devState.svinstatusRate = rate;
+        else if (str == "PQTMEPE")
+            devState.epeRate = rate;
+        else if (str == "GSV")
+            devState.gsvRate = rate;
+        else if (str == "GST")
+            devState.gstRate = rate;
+        else if (str == "PQTMPPPNAV")
+            devState.pppnavRate = rate;
     }
     return ret;
 }
@@ -799,9 +810,9 @@ bool LG290P::getRtkDifferentialAge(uint16_t &timeout)
 
 bool LG290P::setPppSettings(int mode, int datum, int timeout, float horstd, float verstd)
 {
-    //CFGPPP does not require reset to take effect
+    // CFGPPP does not require reset to take effect
     bool ret = true;
-    if(mode == 0)
+    if (mode == 0)
         ret = sendOkCommand("PQTMCFGPPP", ",W,0"); // $PQTMCFGPPP,W,0,0,0* throws error if other params sent
     else
     {
@@ -846,7 +857,7 @@ bool LG290P::scanForMsgsEnabled()
     // GST is not available on firmware < 104
     getMessageRate("GST", devState.gstRate);
 
-    // this is a special message. getMessageRate might fail if in ROVER mode
+    // This is a special message. getMessageRate might fail if in ROVER mode
     getMessageRate("PQTMSVINSTATUS", devState.svinstatusRate, 1);
     return ok;
 }
@@ -931,8 +942,8 @@ bool LG290P::setConstellations(bool enableGPS, bool enableGLONASS, bool enableGa
                                bool enableNavIC)
 {
     char parms[50];
-    snprintf(parms, sizeof parms, ",W,%d,%d,%d,%d,%d,%d", enableGPS, enableGLONASS,
-        enableGalileo, enableBDS, enableQZSS, enableNavIC);
+    snprintf(parms, sizeof parms, ",W,%d,%d,%d,%d,%d,%d", enableGPS, enableGLONASS, enableGalileo, enableBDS,
+             enableQZSS, enableNavIC);
     return sendOkCommand("PQTMCFGCNST", parms) && save() && hotStart();
 }
 
@@ -1151,7 +1162,7 @@ std::list<LG290P::satinfo> LG290P::getVisibleSats(const char *talker /* = nullpt
 }
 
 bool LG290P::getSurveyDetails(int &mode, int &positionTimes, double &accuracyLimit, double &ecefX, double &ecefY,
-                             double &ecefZ)
+                              double &ecefZ)
 {
     bool ret = sendOkCommand("PQTMCFGSVIN", ",R");
     if (ret)
@@ -1204,7 +1215,6 @@ bool LG290P::disableSurveyInMode(bool resetAfter /* = true */)
         ok = ok && save() && reset();
     return ok;
 }
-
 
 // Main handler and RAM inits
 //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
@@ -1410,8 +1420,8 @@ int64_t RtcmPacket::extract_38bit_signed(int bit_offset)
     // We need to grab up to 6 bytes and mask out the unused 2 bits.
     for (int i = 0; i < 6; ++i)
     {
-      value <<= 8;
-      value |= (int64_t)(payload[byte_offset + i]);
+        value <<= 8;
+        value |= (int64_t)(payload[byte_offset + i]);
     }
 
     // Shift right to discard the unwanted bits and align to 38-bit value
@@ -1510,9 +1520,10 @@ uint32_t LG290P::getPVTDomainAgeMs()
 /* static */
 void LG290P::geodeticToEcef(double lat, double lon, double alt, double &xOut, double &yOut, double &zOut)
 {
-    const double WGS84_A = 6378137;           // https://geographiclib.sourceforge.io/html/Constants_8hpp_source.html
-    const double WGS84_E = 0.081819190842622; // http://docs.ros.org/en/hydro/api/gps_common/html/namespacegps__common.html
-                                              // and https://gist.github.com/uhho/63750c4b54c7f90f37f958cc8af0c718
+    const double WGS84_A = 6378137; // https://geographiclib.sourceforge.io/html/Constants_8hpp_source.html
+    const double WGS84_E =
+        0.081819190842622; // http://docs.ros.org/en/hydro/api/gps_common/html/namespacegps__common.html
+                           // and https://gist.github.com/uhho/63750c4b54c7f90f37f958cc8af0c718
     double clat = cos(lat * DEG_TO_RAD);
     double slat = sin(lat * DEG_TO_RAD);
     double clon = cos(lon * DEG_TO_RAD);
@@ -1576,7 +1587,7 @@ void LG290P::ecefToGeodetic(double x, double y, double z, double &latOut, double
     f = c * u + s * v;
     m = c * v - s * u;
     p = m / (rf / g + f);
-    latOut = latOut + p;        // Lat
+    latOut = latOut + p;      // Lat
     altOut = f + m * p / 2.0; // Altitude
     if (z < 0.0)
     {
@@ -1594,7 +1605,7 @@ NmeaPacket NmeaPacket::FromString(const std::string &str)
     size_t start = 0;
     size_t delimiterPos = str.find_first_of(",*");
     unsigned long calculatedChksum = 0;
-    //log_d("Parsing sentence %s", str.c_str());
+    // log_d("Parsing sentence %s", str.c_str());
 
     while (true)
     {
