@@ -54,7 +54,7 @@ int pin_UART1_TX = 5;
 // UART1_RX (IO19/MISO) <-- RPi GPIO Connector 21 (GPIO9/MISO) <-- Raspberry Pi Flex Hat J4-10 (TXD2) <-- Flex connector J3-10 (TXD2) <-- LG290P 6 (TXD1)
 int pin_UART1_RX = 19;
 
-// Reset                                                 ___                            _____               _____
+// Reset                                           ___                            _____               _____
 //  No connection --> Raspberry Pi Flex Hat J4-16 (RST) --> Flex connector J3-16 (RESET)--> LG290P 8 (Reset)
 int pin_RESET = -1;
 
@@ -64,8 +64,8 @@ const char * platform = "ESPBERRY & SparkFun GNSS Flex pHAT";
 #ifdef  POSTCARD
 
 // https://www.sparkfun.com/sparkfun-rtk-postcard.html
-int pin_UART1_TX = 21;
-int pin_UART1_RX = 22;
+int pin_UART1_TX = 22;
+int pin_UART1_RX = 21;
 int pin_RESET = 33;
 const char * platform = "SparkFun RTK Postcard";
 
@@ -86,6 +86,8 @@ int gnss_baud = 460800;
 
 LG290P myGNSS;
 HardwareSerial SerialGNSS(1); // Use UART1 on the ESP32
+
+bool RTK_CONFIG_MBEDTLS_EXTERNAL_MEM_ALLOC = false; // Flag used by the special build of libmbedtls (libmbedcrypto) to select external memory
 
 // The ESP32 core has a built in base64 library but not every platform does
 // We'll use an external lib if necessary.
