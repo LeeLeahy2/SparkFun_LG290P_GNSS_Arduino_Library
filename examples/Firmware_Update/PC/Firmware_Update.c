@@ -326,7 +326,6 @@ const uint32_t crc32_table[256] =
 
 size_t commandResponseLength;
 int comPort;
-bool directConnect;
 bool displayBinaryCommand;
 bool displayBinaryCommandSummary;
 bool displayBinaryResponse;
@@ -352,6 +351,7 @@ bool skipVersionCheck;
 int state;
 int timeoutCount;
 char * timeoutMessage;
+bool useMicroprocessor;
 
 //----------------------------------------
 // Dump the contents of a buffer
@@ -934,7 +934,7 @@ void addBinaryCommandToHandshakeDiagram(const uint8_t * command, size_t commandL
 
     // Display the arrow
     displayLabel = ! displayCommand;
-    if (directConnect == false)
+    if (useMicroprocessor)
         printf("%s%s%s%s\r\n",
                displayLabel ? pcLabel : pc,
                &dashes[1],
@@ -984,7 +984,7 @@ void addBinaryCommandToHandshakeDiagram(const uint8_t * command, size_t commandL
     }
 
     // Display the arrow
-    if (directConnect)
+    if (useMicroprocessor == false)
         printf("%s%s%s%s\r\n",
                displayLabel ? pcLabel : pc,
                &dashes[1],
@@ -2181,7 +2181,7 @@ int handleComPort()
     // Send the initial command
     timeoutMessage = nullptr;
     exitStatus = 0;
-    if (directConnect == false)
+    if (useMicroprocessor)
         exitStatus = writeCommand(helloMicro);
 
     // Wait for a response
@@ -2202,7 +2202,7 @@ int handleComPort()
         }
 
         // Wait for power on to complete or connection to microprocessor
-        else if (directConnect)
+        else if (useMicroprocessor == false)
         {
             //Determine microprocessor output is available
             if (FD_ISSET(comPort, &currentfds))
@@ -2324,7 +2324,6 @@ int main(int argc, char **argv)
     const COMMAND_OPTION options[] =
     {
         {false, &displayArguments,          "--display-arguments", "Display the command arguments"},
-        {false, &directConnect,             "--direct-connect", "Connect directly to GNSS UART, no microprocessor"},
         {true,  &displayBinaryCommand,      "--display-binary-command", "Dump the binary command in hexadecimal and ASCII"},
         {true,  &displayBinaryResponse,     "--display-binary-response", "Dump the binary response in hexadecimal and ASCII"},
         {true,  &displayBinaryCommandSummary,   "--display-binary-summary", "Dump a summary of the binary command in hexadecimal and ASCII"},
@@ -2335,6 +2334,7 @@ int main(int argc, char **argv)
         {false, &firmwareUpdateEnabled,     "--firmware-update-enabled", "Enable firmware updates"},
         {false, &eraseOnly,                 "--erase-only", "Perform the flash erase and then exit"},
         {false, &skipVersionCheck,          "--skip-version-check", "Don't display current firmware version"},
+        {false, &useMicroprocessor,         "--use-microprocessor", "Communicate with the GNSS through a microprocessor"},
     };
     const int optionCount = sizeof(options) / sizeof(options[0]);
     const char * portName;
@@ -2513,7 +2513,7 @@ int main(int argc, char **argv)
 
         // Attempt to upgrade the GNSS firmware
         packetNumber = -1;
-        if (directConnect)
+        if (useMicroprocessor == false)
             exitStatus = gnssUartFirmwareUpgrade(portName);
         else
             exitStatus = microprocessorGnssFirmwareUpgrade(portName);
