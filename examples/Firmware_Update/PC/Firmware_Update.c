@@ -324,6 +324,8 @@ const uint32_t crc32_table[256] =
 // Globals
 //----------------------------------------
 
+uint32_t baudrate;
+bool baudrateSet;
 size_t commandResponseLength;
 int comPort;
 bool displayBinaryCommand;
@@ -2249,7 +2251,7 @@ int microprocessorGnssFirmwareUpgrade(const char * portName)
         }
 
         // Configure the COM Port
-        exitStatus = configureComPort(B115200);
+        exitStatus = configureComPort(baudrate);
         if (exitStatus)
             break;
 
@@ -2288,7 +2290,7 @@ int gnssUartFirmwareUpgrade(const char * portName)
         } while (comPort < 0);
 
         // Configure the COM Port
-        exitStatus = configureComPort(B460800);
+        exitStatus = configureComPort(baudrate);
         if (exitStatus)
             break;
 
@@ -2422,6 +2424,18 @@ int main(int argc, char **argv)
             printf("Port: %s\r\n", portName);
             printf("File name: %s\r\n", fileName);
         }
+
+        // The GNSS bootloader is always using 460800 as the baudrate, see
+        // Section 2.1 of the Quectel LG290P (03) Firmware Upgrade Guide
+        if (useMicroprocessor == false)
+            baudrate = B460800;
+
+        // Determine the baudrate between the PC and microprocessor,
+        // defaults to 115200
+        else if ((baudrateSet == false) && useMicroprocessor)
+            baudrate = B115200;
+
+printf("baudrate: %d\r\n", baudrate);
 
         // Determine if displaying the handshake diagram
         if (displayHandshake)
