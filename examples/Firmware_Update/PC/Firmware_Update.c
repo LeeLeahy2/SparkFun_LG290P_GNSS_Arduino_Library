@@ -175,6 +175,7 @@ Firmware_Update.c
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/select.h>
@@ -185,9 +186,16 @@ Firmware_Update.c
 // New types
 //----------------------------------------
 
+typedef struct _BAUDRATE_OPTION
+{
+    int _baudrate;
+    speed_t _bValue;
+} BAUDRATE_OPTION;
+
 typedef struct _COMMAND_OPTION
 {
     bool _displayHandshakeDiagram;
+    bool _getBaudRate;
     bool * _optionBoolean;
     const char * _optionString;
     const char * _helpText;
@@ -251,6 +259,82 @@ const char * pcBottom = "'----------'";
 const char * pcLabel  = "|    PC    |";
 const char * pcTop    = ".----------.";
 const char * spaces = "                                                                                ";
+
+const BAUDRATE_OPTION baudrateTable[] =
+{
+    {50, B50},
+    {110, B110},
+    {134, B134},
+    {150, B150},
+    {200, B200},
+    {300, B300},
+    {600, B600},
+    {1200, B1200},
+    {1800, B1800},
+    {2400, B2400},
+    {4800, B4800},
+    {9600, B9600},
+    {19200, B19200},
+    {38400, B38400},
+#ifdef B57600
+    {57600, B57600},
+#endif
+#ifdef B76800
+    {76800, B76800},
+#endif
+#ifdef B115200
+    {115200, B115200},
+#endif
+#ifdef B153600
+    {153600, B153600},
+#endif
+#ifdef B230400
+    {230400, B230400},
+#endif
+#ifdef B307200
+    {307200, B307200},
+#endif
+#ifdef B460800
+    {460800, B460800},
+#endif
+#ifdef B500000
+    {500000, B500000},
+#endif
+#ifdef B576000
+    {576000, B576000},
+#endif
+#ifdef B614400
+    {614400, B614400},
+#endif
+#ifdef B921600
+    {921600, B921600},
+#endif
+#ifdef B1000000
+    {1000000, B1000000},
+#endif
+#ifdef B1152000
+    {1152000, B1152000},
+#endif
+#ifdef B1500000
+    {1500000, B1500000},
+#endif
+#ifdef B2000000
+    {2000000, B2000000},
+#endif
+#ifdef B2500000
+    {2500000, B2500000},
+#endif
+#ifdef B3000000
+    {3000000, B3000000},
+#endif
+#ifdef B3500000
+    {3500000, B3500000},
+#endif
+#ifdef B4000000
+    {4000000, B4000000},
+#endif
+};
+const int baudrateTableEntries = sizeof(baudrateTable) / sizeof(baudrateTable[0]);
 
 const uint32_t crc32_table[256] =
 {
@@ -324,7 +408,7 @@ const uint32_t crc32_table[256] =
 // Globals
 //----------------------------------------
 
-uint32_t baudrate;
+speed_t baudrate = B460800;
 bool baudrateSet;
 size_t commandResponseLength;
 int comPort;
@@ -2311,6 +2395,20 @@ int gnssUartFirmwareUpgrade(const char * portName)
 }
 
 //----------------------------------------
+// Translate the B-value into a baudrate
+//----------------------------------------
+int baudrateLookup()
+{
+    // Walk the baudrate table
+    for (int index = 0; index < baudrateTableEntries; index++)
+        if (baudrateTable[index]._bValue == baudrate)
+            return baudrateTable[index]._baudrate;
+
+    // Unknown baudrate value
+    return 0;
+}
+
+//----------------------------------------
 // Application to update the firmware on a Quectel GNSS device
 //----------------------------------------
 int main(int argc, char **argv)
@@ -2325,21 +2423,23 @@ int main(int argc, char **argv)
     int index;
     const COMMAND_OPTION options[] =
     {
-        {0, &displayArguments,          "--display-arguments", "Display the command arguments"},
-        {1, &displayBinaryCommand,      "--display-binary-command", "Dump the binary command in hexadecimal and ASCII"},
-        {1, &displayBinaryResponse,     "--display-binary-response", "Dump the binary response in hexadecimal and ASCII"},
-        {1, &displayBinaryCommandSummary,   "--display-binary-summary", "Dump a summary of the binary command in hexadecimal and ASCII"},
-        {0, &displayBytesReceived,      "--display-bytes-received", "Display each of the received bytes"},
-        {1, &displayCommand,            "--display-command", "Display the microprocessor commands"},
-        {1, &displayCommandResponse,    "--display-command-response", "Display the microprocessor command responses"},
-        {1, &displayHandshake,          "--display-handshake-diagram", "Display the handshake diagram"},
-        {0, &firmwareUpdateEnabled,     "--firmware-update-enabled", "Enable firmware updates"},
-        {0, &eraseOnly,                 "--erase-only", "Perform the flash erase and then exit"},
-        {0, &skipVersionCheck,          "--skip-version-check", "Don't display current firmware version"},
-        {0, &useMicroprocessor,         "--use-microprocessor", "Communicate with the GNSS through a microprocessor"},
+        {0, 1, &baudrateSet,                "--baudrate", "Set the baudrate between the PC and microprocessor,\r\n                defaults to 115200, Example: --baudrate   19200"},
+        {0, 0, &displayArguments,           "--display-arguments", "Display the command arguments"},
+        {1, 0, &displayBinaryCommand,       "--display-binary-command", "Dump the binary command in hexadecimal and ASCII"},
+        {1, 0, &displayBinaryResponse,      "--display-binary-response", "Dump the binary response in hexadecimal and ASCII"},
+        {1, 0, &displayBinaryCommandSummary,"--display-binary-summary", "Dump a summary of the binary command in hexadecimal and ASCII"},
+        {0, 0, &displayBytesReceived,       "--display-bytes-received", "Display each of the received bytes"},
+        {1, 0, &displayCommand,             "--display-command", "Display the microprocessor commands"},
+        {1, 0, &displayCommandResponse,     "--display-command-response", "Display the microprocessor command responses"},
+        {1, 0, &displayHandshake,           "--display-handshake-diagram", "Display the handshake diagram"},
+        {0, 0, &firmwareUpdateEnabled,      "--firmware-update-enabled", "Enable firmware updates"},
+        {0, 0, &eraseOnly,                  "--erase-only", "Perform the flash erase and then exit"},
+        {0, 0, &skipVersionCheck,           "--skip-version-check", "Don't display current firmware version"},
+        {0, 0, &useMicroprocessor,          "--use-microprocessor", "Communicate with the GNSS through a microprocessor"},
     };
     const int optionCount = sizeof(options) / sizeof(options[0]);
     const char * portName;
+    bool validCommand;
 
     exitStatus = -1;
     do
@@ -2350,6 +2450,7 @@ int main(int argc, char **argv)
         portName = "";
         displayHandshakeDiagram = false;
         fileName = "";
+        validCommand = true;
         while (argc - argOffset)
         {
             bool match;
@@ -2368,6 +2469,49 @@ int main(int argc, char **argv)
                         *options[index]._optionBoolean = true;
                         argOffset += 1;
                         break;
+                    }
+                }
+
+                // Check for an integer value
+                if (match && options[index]._getBaudRate)
+                {
+                    int value;
+
+                    // Verify that at least one more argument is present
+                    if (argOffset >= argc)
+                    {
+                        printf("ERROR: Baudrate not specified\r\n");
+                        validCommand = false;
+                        break;
+                    }
+
+                    // Get the baudrate value
+                    if (sscanf(argv[argOffset], "%d", &value) == 0)
+                    {
+                        printf("ERROR: Invalid baudrate value, %s\r\n", argv[argOffset]);
+                        validCommand = false;
+                        break;
+                    }
+                    else
+                    {
+                        // Validate the baudrate value
+                        for (index = 0; index < baudrateTableEntries; index++)
+                        {
+                            if (baudrateTable[index]._baudrate == value)
+                            {
+                                baudrate = baudrateTable[index]._bValue;
+                                argOffset += 1;
+                                break;
+                            }
+                        }
+
+                        // Display the baudrate value error
+                        if (index >= baudrateTableEntries)
+                        {
+                            printf("ERROR: Invalid baudrate value, %d\r\n", value);
+                            validCommand = false;
+                            break;
+                        }
                     }
                 }
             }
@@ -2394,8 +2538,12 @@ int main(int argc, char **argv)
             }
         }
 
-        // Display the help text
+        // Check for a valid command
         if ((argCount < 2) || (argOffset != argc))
+            validCommand = false;
+
+        // Display the help text
+        if (validCommand == false)
         {
             printf("%s   [options]   <COM_Port%s%s>   <Firmware_File>\r\n",
                    argv[0],
@@ -2434,8 +2582,6 @@ int main(int argc, char **argv)
         // defaults to 115200
         else if ((baudrateSet == false) && useMicroprocessor)
             baudrate = B115200;
-
-printf("baudrate: %d\r\n", baudrate);
 
         // Determine if displaying the handshake diagram
         if (displayHandshake)
