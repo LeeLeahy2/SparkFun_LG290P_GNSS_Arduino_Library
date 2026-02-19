@@ -2650,7 +2650,7 @@ int main(int argc, char **argv)
     } while (0);
 
     // Done with the COM port
-    if (comPort)
+    if (comPort >= 0)
         close(comPort);
 
     // Release the mapped firmware file
@@ -2658,7 +2658,7 @@ int main(int argc, char **argv)
         munmap(firmwarePackage, firmwareLength);
 
     // Done with the firmware file
-    if (firmware)
+    if (firmware >= 0)
         close(firmware);
 
     // Convert the exitStatus value if necessary
