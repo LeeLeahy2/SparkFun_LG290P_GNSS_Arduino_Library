@@ -438,6 +438,7 @@ int state;
 int timeoutCount;
 char * timeoutMessage;
 bool useMicroprocessor;
+bool waitForUart;
 
 //----------------------------------------
 // Dump the contents of a buffer
@@ -2313,19 +2314,24 @@ int handleComPort()
 }
 
 //----------------------------------------
-// Use a microprocessor to help with the GNSS firmware upload
-//
-//      PC <---> Microprocessor <---> GNSS
+// Connect to the COM port
 //----------------------------------------
-int microprocessorGnssFirmwareUpgrade(const char * portName)
+int connectComPort(const char * portName)
 {
     int exitStatus;
 
     exitStatus = 0;
     do
     {
-        // Attempt to open the COM Port
-        comPort = open(portName, O_RDWR, 0);
+        // Wait for the COM Port to become available
+        printf("Waiting for GNSS power on and COM Port %s\r\n", portName);
+        do
+        {
+            // Attempt to open the COM Port
+            comPort = open(portName, O_RDWR, 0);
+        } while (waitForUart && (comPort < 0));
+
+        // Handle the connection error
         if (comPort < 0)
         {
             exitStatus = errno;
@@ -2339,45 +2345,6 @@ int microprocessorGnssFirmwareUpgrade(const char * portName)
         if (exitStatus)
             break;
 
-        // Display the handshake header
-        if (displayHandshakeDiagram)
-        {
-            size_t spaceCount = strlen(spaces) - strlen(dashes);
-            printf("%s%s%s\r\n", pcTop, &spaces[spaceCount], microprocessorTop);
-            printf("%s%s%s\r\n", pcLabel, &spaces[spaceCount], microprocessorLabel);
-        }
-
-        // Upload the firmware image
-        pollTimeoutUsec = 500 * 1000;
-        timeoutCount = 0;
-        exitStatus = handleComPort();
-    } while (0);
-    return exitStatus;
-}
-
-//----------------------------------------
-// Use a UART directly connected to the GNSS to do the GNSS firmware upgrade
-//----------------------------------------
-int gnssUartFirmwareUpgrade(const char * portName)
-{
-    int exitStatus;
-
-    exitStatus = 0;
-    do
-    {
-        // Wait for the COM Port to become available
-        printf("Waiting for GNSS power on and COM Port %s\r\n", portName);
-        do
-        {
-            // Attempt to open the COM Port
-            comPort = open(portName, O_RDWR, 0);
-        } while (comPort < 0);
-
-        // Configure the COM Port
-        exitStatus = configureComPort(baudrate);
-        if (exitStatus)
-            break;
-
         // Display the headshake header
         if (displayHandshakeDiagram)
         {
@@ -2385,11 +2352,6 @@ int gnssUartFirmwareUpgrade(const char * portName)
             printf("%s%s%s\r\n", pcTop, &spaces[spaceCount], microprocessorTop);
             printf("%s%s%s\r\n", pcLabel, &spaces[spaceCount], microprocessorLabel);
         }
-
-        // Upload the firmware image
-        pollTimeoutUsec = 20 * 1000;
-        timeoutCount = 0;
-        exitStatus = handleComPort();
     } while (0);
     return exitStatus;
 }
@@ -2436,6 +2398,7 @@ int main(int argc, char **argv)
         {0, 0, &eraseOnly,                  "--erase-only", "Perform the flash erase and then exit"},
         {0, 0, &skipVersionCheck,           "--skip-version-check", "Don't display current firmware version"},
         {0, 0, &useMicroprocessor,          "--use-microprocessor", "Communicate with the GNSS through a microprocessor"},
+        {0, 0, &waitForUart,                "--wait-for-uart", "From GNSS system power on, wait for the UART to appear"},
     };
     const int optionCount = sizeof(options) / sizeof(options[0]);
     const char * portName;
@@ -2671,12 +2634,19 @@ int main(int argc, char **argv)
         firmwareCrc32 = computeCrc32(firmwareCrc32, firmwarePackage, firmwareLength);
         printf("Firmware CRC32: 0x%08x\r\n", firmwareCrc32);
 
+        // Attempt to connect to the COM port
+        exitStatus = connectComPort(portName);
+        if (exitStatus)
+            break;
+
         // Attempt to upgrade the GNSS firmware
         packetNumber = -1;
+        timeoutCount = 0;
         if (useMicroprocessor == false)
-            exitStatus = gnssUartFirmwareUpgrade(portName);
+            pollTimeoutUsec = 20 * 1000;
         else
-            exitStatus = microprocessorGnssFirmwareUpgrade(portName);
+            pollTimeoutUsec = 500 * 1000;
+        exitStatus = handleComPort();
     } while (0);
 
     // Done with the COM port
