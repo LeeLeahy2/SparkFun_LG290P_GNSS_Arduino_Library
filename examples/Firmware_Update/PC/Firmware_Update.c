@@ -2323,18 +2323,18 @@ int main(int argc, char **argv)
     int index;
     const COMMAND_OPTION options[] =
     {
-        {false, &displayArguments,          "--display-arguments", "Display the command arguments"},
-        {true,  &displayBinaryCommand,      "--display-binary-command", "Dump the binary command in hexadecimal and ASCII"},
-        {true,  &displayBinaryResponse,     "--display-binary-response", "Dump the binary response in hexadecimal and ASCII"},
-        {true,  &displayBinaryCommandSummary,   "--display-binary-summary", "Dump a summary of the binary command in hexadecimal and ASCII"},
-        {false, &displayBytesReceived,      "--display-bytes-received", "Display each of the received bytes"},
-        {true,  &displayCommand,            "--display-command", "Display the microprocessor commands"},
-        {true,  &displayCommandResponse,    "--display-command-response", "Display the microprocessor command responses"},
-        {true,  &displayHandshake,          "--display-handshake-diagram", "Display the handshake diagram"},
-        {false, &firmwareUpdateEnabled,     "--firmware-update-enabled", "Enable firmware updates"},
-        {false, &eraseOnly,                 "--erase-only", "Perform the flash erase and then exit"},
-        {false, &skipVersionCheck,          "--skip-version-check", "Don't display current firmware version"},
-        {false, &useMicroprocessor,         "--use-microprocessor", "Communicate with the GNSS through a microprocessor"},
+        {0, &displayArguments,          "--display-arguments", "Display the command arguments"},
+        {1, &displayBinaryCommand,      "--display-binary-command", "Dump the binary command in hexadecimal and ASCII"},
+        {1, &displayBinaryResponse,     "--display-binary-response", "Dump the binary response in hexadecimal and ASCII"},
+        {1, &displayBinaryCommandSummary,   "--display-binary-summary", "Dump a summary of the binary command in hexadecimal and ASCII"},
+        {0, &displayBytesReceived,      "--display-bytes-received", "Display each of the received bytes"},
+        {1, &displayCommand,            "--display-command", "Display the microprocessor commands"},
+        {1, &displayCommandResponse,    "--display-command-response", "Display the microprocessor command responses"},
+        {1, &displayHandshake,          "--display-handshake-diagram", "Display the handshake diagram"},
+        {0, &firmwareUpdateEnabled,     "--firmware-update-enabled", "Enable firmware updates"},
+        {0, &eraseOnly,                 "--erase-only", "Perform the flash erase and then exit"},
+        {0, &skipVersionCheck,          "--skip-version-check", "Don't display current firmware version"},
+        {0, &useMicroprocessor,         "--use-microprocessor", "Communicate with the GNSS through a microprocessor"},
     };
     const int optionCount = sizeof(options) / sizeof(options[0]);
     const char * portName;
