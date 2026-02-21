@@ -1259,7 +1259,7 @@ int uploadFirmware(bool timeout)
     static bool binaryResponse;
     uint16_t commandStatus;
     uint32_t crc;
-    bool displayResponesSummary;
+    bool displayResponseSummary;
     int exitStatus;
     const char * firmwareVersionResponse = "Firmware Version: ";
     bool gotResponse;
@@ -1277,7 +1277,7 @@ int uploadFirmware(bool timeout)
     }
 
     // Determine if response summaries should be displayed
-    displayResponesSummary = (displayHandshakeDiagram == false)
+    displayResponseSummary = (displayHandshakeDiagram == false)
                              || ((displayHandshakeDiagram == true)
                                 && (displayBinaryCommand == false)
                                 && (displayBinaryCommandSummary == false)
@@ -1391,7 +1391,7 @@ int uploadFirmware(bool timeout)
                 }
 
                 // Reset the GNSS
-                printResponse = displayResponesSummary;
+                printResponse = displayResponseSummary;
                 exitStatus = resetAndSync();
             }
             break;
@@ -1461,7 +1461,7 @@ int uploadFirmware(bool timeout)
                 }
 
                 // Display the boot loader version
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Bootloader version: %d.%d.%d\r\n", response[9], response[10], response[11]);
 
                 // Determine if firmware updates are enabled
@@ -1593,7 +1593,7 @@ int uploadFirmware(bool timeout)
                 }
 
                 // Display the erased message
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Firmware erased\r\n");
 
                 // Determine if just erasing the flash
@@ -1662,7 +1662,7 @@ int uploadFirmware(bool timeout)
                 }
 
                 // Display the packet number and count
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Packet %d of %d\r\n", packetNumber, packetCount - 1);
 
                 // Account for this packet
@@ -1680,7 +1680,7 @@ int uploadFirmware(bool timeout)
                 }
 
                 // Firmware update complete
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Firmware upload complete, resetting GNSS\r\n");
 
                 // Send the GNSS reset command
@@ -1740,7 +1740,7 @@ int uploadFirmware(bool timeout)
                 }
 
                 // All done
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("GNSS reset\r\n");
 
                 // Display the firmware version
@@ -1773,7 +1773,7 @@ int directFirmwareUpload(bool timeout)
     ssize_t bytesRead;
     uint16_t commandStatus;
     uint32_t crc;
-    bool displayResponesSummary;
+    bool displayResponseSummary;
     int exitStatus;
     static bool getResponse;
     bool gotResponse;
@@ -1790,7 +1790,7 @@ int directFirmwareUpload(bool timeout)
     }
 
     // Determine if response summaries should be displayed
-    displayResponesSummary = (displayHandshakeDiagram == false)
+    displayResponseSummary = (displayHandshakeDiagram == false)
                              || ((displayHandshakeDiagram == true)
                                 && (displayBinaryCommand == false)
                                 && (displayBinaryCommandSummary == false)
@@ -2009,7 +2009,7 @@ int directFirmwareUpload(bool timeout)
                 }
 
                 // Display the boot loader version
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Bootloader version: %d.%d.%d\r\n", response[9], response[10], response[11]);
 
                 // Send the firmware information
@@ -2110,7 +2110,7 @@ int directFirmwareUpload(bool timeout)
                 }
 
                 // Display the erased message
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Firmware erased\r\n");
 
                 // Determine if just erasing the flash
@@ -2169,7 +2169,7 @@ int directFirmwareUpload(bool timeout)
                 }
 
                 // Display the packet number and count
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Packet %d of %d\r\n", packetNumber, packetCount - 1);
 
                 // Account for this packet
@@ -2184,7 +2184,7 @@ int directFirmwareUpload(bool timeout)
                 }
 
                 // Firmware update complete
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Firmware upload complete, resetting GNSS\r\n");
 
                 // Send the GNSS reset command
@@ -2232,7 +2232,7 @@ int directFirmwareUpload(bool timeout)
                 }
 
                 // All done
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("GNSS reset\r\n");
                 exitStatus = BAIL_WITH_SUCCESS;
             }
