@@ -205,7 +205,7 @@ typedef struct _COMMAND_OPTION
 // Constants
 //----------------------------------------
 
-#define MAX_PACKET_SIZE             4096
+#define MAX_PACKET_SIZE             (5 * 1024)
 
 #define BAIL_WITH_SUCCESS           0x8000000
 
@@ -233,7 +233,9 @@ enum MICROPROCESSOR_FIRMWARE_UPLOAD_STATES
 
 enum DIRECT_CONNECT_FIRMWARE_UPLOAD_STATES
 {
-    DCFUS_POWER_ON = 0,
+    DCFUS_FIRMWARE_VERSION = 0,
+    DCFUS_RESET,
+    DCFUS_POWER_ON,
     DCFUS_SYNC,
     DCFUS_BOOT_VERSION,
     DCFUS_FIRMWARE_INFO,
@@ -555,13 +557,18 @@ int configureComPort(speed_t baudRate)
 //----------------------------------------
 int writeData(const uint8_t * command, ssize_t length)
 {
+    size_t bytes;
+    const size_t maxBytes = 4096;
     errno = 0;
 
     // Ensure that all of the data is sent to the microprocessor
     while (length)
     {
         // Send some data to the microprocessor
-        int bytesWritten = write(comPort, command, length);
+        bytes = length;
+        if (bytes > maxBytes)
+            bytes = maxBytes;
+        int bytesWritten = write(comPort, command, bytes);
 
         // Handle write errors
         if (bytesWritten < 0)
@@ -666,6 +673,92 @@ bool getResponse()
 
         // Handle the errors
         if (bytesRead <= 0)
+            break;
+
+        // Display the byte
+        if (displayBytesReceived)
+            printf("0x%02x\r\n", response[responseLength]);
+
+        // Done when CR or LF received
+        if ((response[responseLength] == '\r') || (response[responseLength] == '\n'))
+        {
+            gotResponse = (responseLength != 0);
+            break;
+        }
+
+        // Buffer the response
+        responseLength += 1;
+    } while (0);
+
+    // Zero terminate the string
+    response[responseLength] = 0;
+
+    // Start a new response if necessary
+    if (gotResponse)
+    {
+        responseLength = 0;
+
+        // Display the response
+        if (displayCommandResponse)
+        {
+            if (strcmp((char *)response, "Command Done") == 0)
+            {
+                size_t length;
+                size_t spacesAfter;
+                size_t spacesBefore;
+
+                // Display the response
+                length = strlen((char *)response);
+                spacesAfter = strlen(dashes) - 1 - length - 1;
+                spacesBefore = spacesAfter / 2;
+                spacesAfter -= spacesBefore;
+                spacesBefore = strlen(spaces) - spacesBefore;
+                spacesAfter = strlen(spaces) - spacesAfter;
+                printf("%s%s %s %s%s\r\n",
+                       pc,
+                       &spaces[spacesBefore],
+                       response,
+                       &spaces[spacesAfter],
+                       microprocessor);
+
+                // Display the arrow
+                printf("%s%s%s%s\r\n", pc, leftArrow, &dashes[1], microprocessor);
+            }
+            else
+                addResponseToHandshakeDiagram((char *)response);
+        }
+    }
+
+    // Tell the caller of the response
+    return gotResponse;
+}
+
+//----------------------------------------
+// Read a NMEA response from the GNSS device
+//----------------------------------------
+bool getNmeaResponse()
+{
+    char data;
+    bool gotResponse;
+
+    errno = 0;
+    gotResponse = false;
+    do
+    {
+        // Read data from the microprocessor
+        ssize_t bytesRead = read(comPort, &response[responseLength], 1);
+
+        // Handle the errors
+        if (bytesRead <= 0)
+            break;
+
+        // Display the byte
+        if (displayBytesReceived)
+            printf("0x%02x\r\n", response[responseLength]);
+
+        // NMEA sentence starts with a dollar sign ($)
+        if ((responseLength == 0) && (response[0] != '$'))
+            // Ignore this character
             break;
 
         // Done when CR or LF received
@@ -1764,6 +1857,32 @@ int uploadFirmware(bool timeout)
 }
 
 //----------------------------------------
+// Display the firmware version
+void displayFirmwareVersion()
+{
+    const char * lg290pFirmware = "$PQTMVERNO,LG290P03AANR";
+    size_t length;
+    int major;
+    int minor;
+
+    // Determine if the firmware version was returned
+    length = strlen(lg290pFirmware);
+    if (strncmp((char *)response, lg290pFirmware, length) != 0)
+        // Display the response upon error
+        printf("ERROR: Firmware version response: %s\r\n", response);
+
+    // Get the firmware version
+    else if (sscanf((char *)&response[length], "%2dA%2dS", &major, &minor) != 2)
+        // Display the error
+        printf("ERROR: Unable to parse firmware version from %s\r\n", response);
+
+    // Display the version number
+    else
+        printf("Current firmware version: %d.%d (%d)\r\n",
+               major, minor, (major * 100) + minor);
+}
+
+//----------------------------------------
 // Upload the firmware image through a directly connected UART
 //
 //      PC <---> GNSS
@@ -1775,11 +1894,12 @@ int directFirmwareUpload(bool timeout)
     uint32_t crc;
     bool displayResponseSummary;
     int exitStatus;
-    static bool getResponse;
+    static bool getBinaryResponse;
     bool gotResponse;
     int length;
     const char * message;
     bool printResponse;
+    const char * resetCommand = "$PQTMSRR*4B\r\n";
 
     // Handle timeouts
     if (timeout && timeoutMessage && (state < DCFUS_MAX))
@@ -1800,7 +1920,7 @@ int directFirmwareUpload(bool timeout)
     // Get the response
     exitStatus = 0;
     gotResponse = false;
-    if (getResponse && (timeout == false))
+    if (getBinaryResponse && (timeout == false))
     {
         // Get the binary response
         gotResponse = getCommandResponse();
@@ -1823,6 +1943,23 @@ int directFirmwareUpload(bool timeout)
                 printf("Timeout!\r\n");
             exitStatus = -1;
             timeoutMessage = nullptr;
+            break;
+
+        // Display the firmware version if available
+        case DCFUS_FIRMWARE_VERSION:
+            // Attempt to get the firmware version response
+            if (timeout == false)
+                gotResponse = getNmeaResponse();
+            if (gotResponse)
+            {
+                displayFirmwareVersion();
+                exitStatus = writeData((const uint8_t *)resetCommand, strlen(resetCommand));
+                state = DCFUS_POWER_ON;
+            } else if (timeout)
+            {
+                exitStatus = writeData((const uint8_t *)resetCommand, strlen(resetCommand));
+                state = DCFUS_POWER_ON;
+            }
             break;
 
         // Wait for response to SYNC WORD 1
@@ -1912,7 +2049,6 @@ int directFirmwareUpload(bool timeout)
                     data[3] = 0x12;
                     exitStatus = writeData(data, sizeof(data));
                     responseLength = 0;
-                    timeoutMessage = "ERROR: Failed to receive RSP_WORD2";
                     state = DCFUS_SYNC;
                 }
             }
@@ -1948,6 +2084,7 @@ int directFirmwareUpload(bool timeout)
             {
                 // Error, discard any received data and try again
                 responseLength = 0;
+                state = DCFUS_POWER_ON;
             }
 
             // Sucessfully received RSP_WORD2 0x55FD5BA0 (little endian)
@@ -1963,7 +2100,7 @@ int directFirmwareUpload(bool timeout)
 
                 // Send the boot version command
                 exitStatus = getBootLoaderVersion();
-                getResponse = true;
+                getBinaryResponse = true;
                 responseLength = 0;
                 pollTimeoutUsec = 500 * 1000;
                 timeoutMessage = "ERROR: Timeout getting bootloader version command!\r\n";
@@ -2179,6 +2316,8 @@ int directFirmwareUpload(bool timeout)
                 if (packetNumber < packetCount)
                 {
                     exitStatus = sendFirmwarePacket(packetNumber);
+                    if ((packetNumber + 1) == packetCount)
+                        pollTimeoutUsec = 30 * 1000 * 1000;
                     state = DCFUS_FIRMWARE_UPLOAD;
                     break;
                 }
@@ -2256,20 +2395,23 @@ int handleComPort()
     int numfds;
     fd_set readfds;
     struct timeval timeout;
+    const char * versionInfoCommand = "$PQTMVERNO*58\r\n";
 
-    maxfds = fileno(stdin);
-    if (maxfds < comPort)
-        maxfds = comPort;
 
     //Initialize the fd_sets
     FD_ZERO(&readfds);
     FD_SET(comPort, &readfds);
+    maxfds = fileno(stdin);
+    if (maxfds < comPort)
+        maxfds = comPort;
 
     // Send the initial command
     timeoutMessage = nullptr;
     exitStatus = 0;
     if (useMicroprocessor)
         exitStatus = writeCommand(helloMicro);
+    else
+        exitStatus = writeData((const uint8_t *)versionInfoCommand, strlen(versionInfoCommand));
 
     // Wait for a response
     while (exitStatus == 0)
