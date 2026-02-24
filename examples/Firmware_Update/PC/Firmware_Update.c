@@ -175,6 +175,7 @@ Firmware_Update.c
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/select.h>
@@ -185,9 +186,16 @@ Firmware_Update.c
 // New types
 //----------------------------------------
 
+typedef struct _BAUDRATE_OPTION
+{
+    int _baudrate;
+    speed_t _bValue;
+} BAUDRATE_OPTION;
+
 typedef struct _COMMAND_OPTION
 {
     bool _displayHandshakeDiagram;
+    bool _getBaudRate;
     bool * _optionBoolean;
     const char * _optionString;
     const char * _helpText;
@@ -197,7 +205,7 @@ typedef struct _COMMAND_OPTION
 // Constants
 //----------------------------------------
 
-#define MAX_PACKET_SIZE             4096
+#define MAX_PACKET_SIZE             (5 * 1024)
 
 #define BAIL_WITH_SUCCESS           0x8000000
 
@@ -225,7 +233,9 @@ enum MICROPROCESSOR_FIRMWARE_UPLOAD_STATES
 
 enum DIRECT_CONNECT_FIRMWARE_UPLOAD_STATES
 {
-    DCFUS_POWER_ON = 0,
+    DCFUS_FIRMWARE_VERSION = 0,
+    DCFUS_RESET,
+    DCFUS_POWER_ON,
     DCFUS_SYNC,
     DCFUS_BOOT_VERSION,
     DCFUS_FIRMWARE_INFO,
@@ -251,6 +261,82 @@ const char * pcBottom = "'----------'";
 const char * pcLabel  = "|    PC    |";
 const char * pcTop    = ".----------.";
 const char * spaces = "                                                                                ";
+
+const BAUDRATE_OPTION baudrateTable[] =
+{
+    {50, B50},
+    {110, B110},
+    {134, B134},
+    {150, B150},
+    {200, B200},
+    {300, B300},
+    {600, B600},
+    {1200, B1200},
+    {1800, B1800},
+    {2400, B2400},
+    {4800, B4800},
+    {9600, B9600},
+    {19200, B19200},
+    {38400, B38400},
+#ifdef B57600
+    {57600, B57600},
+#endif
+#ifdef B76800
+    {76800, B76800},
+#endif
+#ifdef B115200
+    {115200, B115200},
+#endif
+#ifdef B153600
+    {153600, B153600},
+#endif
+#ifdef B230400
+    {230400, B230400},
+#endif
+#ifdef B307200
+    {307200, B307200},
+#endif
+#ifdef B460800
+    {460800, B460800},
+#endif
+#ifdef B500000
+    {500000, B500000},
+#endif
+#ifdef B576000
+    {576000, B576000},
+#endif
+#ifdef B614400
+    {614400, B614400},
+#endif
+#ifdef B921600
+    {921600, B921600},
+#endif
+#ifdef B1000000
+    {1000000, B1000000},
+#endif
+#ifdef B1152000
+    {1152000, B1152000},
+#endif
+#ifdef B1500000
+    {1500000, B1500000},
+#endif
+#ifdef B2000000
+    {2000000, B2000000},
+#endif
+#ifdef B2500000
+    {2500000, B2500000},
+#endif
+#ifdef B3000000
+    {3000000, B3000000},
+#endif
+#ifdef B3500000
+    {3500000, B3500000},
+#endif
+#ifdef B4000000
+    {4000000, B4000000},
+#endif
+};
+const int baudrateTableEntries = sizeof(baudrateTable) / sizeof(baudrateTable[0]);
 
 const uint32_t crc32_table[256] =
 {
@@ -324,9 +410,10 @@ const uint32_t crc32_table[256] =
 // Globals
 //----------------------------------------
 
+speed_t baudrate = B460800;
+bool baudrateSet;
 size_t commandResponseLength;
 int comPort;
-bool directConnect;
 bool displayBinaryCommand;
 bool displayBinaryCommandSummary;
 bool displayBinaryResponse;
@@ -352,6 +439,8 @@ bool skipVersionCheck;
 int state;
 int timeoutCount;
 char * timeoutMessage;
+bool useMicroprocessor;
+bool waitForUart;
 
 //----------------------------------------
 // Dump the contents of a buffer
@@ -468,13 +557,18 @@ int configureComPort(speed_t baudRate)
 //----------------------------------------
 int writeData(const uint8_t * command, ssize_t length)
 {
+    size_t bytes;
+    const size_t maxBytes = 4096;
     errno = 0;
 
     // Ensure that all of the data is sent to the microprocessor
     while (length)
     {
         // Send some data to the microprocessor
-        int bytesWritten = write(comPort, command, length);
+        bytes = length;
+        if (bytes > maxBytes)
+            bytes = maxBytes;
+        int bytesWritten = write(comPort, command, bytes);
 
         // Handle write errors
         if (bytesWritten < 0)
@@ -579,6 +673,92 @@ bool getResponse()
 
         // Handle the errors
         if (bytesRead <= 0)
+            break;
+
+        // Display the byte
+        if (displayBytesReceived)
+            printf("0x%02x\r\n", response[responseLength]);
+
+        // Done when CR or LF received
+        if ((response[responseLength] == '\r') || (response[responseLength] == '\n'))
+        {
+            gotResponse = (responseLength != 0);
+            break;
+        }
+
+        // Buffer the response
+        responseLength += 1;
+    } while (0);
+
+    // Zero terminate the string
+    response[responseLength] = 0;
+
+    // Start a new response if necessary
+    if (gotResponse)
+    {
+        responseLength = 0;
+
+        // Display the response
+        if (displayCommandResponse)
+        {
+            if (strcmp((char *)response, "Command Done") == 0)
+            {
+                size_t length;
+                size_t spacesAfter;
+                size_t spacesBefore;
+
+                // Display the response
+                length = strlen((char *)response);
+                spacesAfter = strlen(dashes) - 1 - length - 1;
+                spacesBefore = spacesAfter / 2;
+                spacesAfter -= spacesBefore;
+                spacesBefore = strlen(spaces) - spacesBefore;
+                spacesAfter = strlen(spaces) - spacesAfter;
+                printf("%s%s %s %s%s\r\n",
+                       pc,
+                       &spaces[spacesBefore],
+                       response,
+                       &spaces[spacesAfter],
+                       microprocessor);
+
+                // Display the arrow
+                printf("%s%s%s%s\r\n", pc, leftArrow, &dashes[1], microprocessor);
+            }
+            else
+                addResponseToHandshakeDiagram((char *)response);
+        }
+    }
+
+    // Tell the caller of the response
+    return gotResponse;
+}
+
+//----------------------------------------
+// Read a NMEA response from the GNSS device
+//----------------------------------------
+bool getNmeaResponse()
+{
+    char data;
+    bool gotResponse;
+
+    errno = 0;
+    gotResponse = false;
+    do
+    {
+        // Read data from the microprocessor
+        ssize_t bytesRead = read(comPort, &response[responseLength], 1);
+
+        // Handle the errors
+        if (bytesRead <= 0)
+            break;
+
+        // Display the byte
+        if (displayBytesReceived)
+            printf("0x%02x\r\n", response[responseLength]);
+
+        // NMEA sentence starts with a dollar sign ($)
+        if ((responseLength == 0) && (response[0] != '$'))
+            // Ignore this character
             break;
 
         // Done when CR or LF received
@@ -934,7 +1114,7 @@ void addBinaryCommandToHandshakeDiagram(const uint8_t * command, size_t commandL
 
     // Display the arrow
     displayLabel = ! displayCommand;
-    if (directConnect == false)
+    if (useMicroprocessor)
         printf("%s%s%s%s\r\n",
                displayLabel ? pcLabel : pc,
                &dashes[1],
@@ -984,7 +1164,7 @@ void addBinaryCommandToHandshakeDiagram(const uint8_t * command, size_t commandL
     }
 
     // Display the arrow
-    if (directConnect)
+    if (useMicroprocessor == false)
         printf("%s%s%s%s\r\n",
                displayLabel ? pcLabel : pc,
                &dashes[1],
@@ -1172,7 +1352,7 @@ int uploadFirmware(bool timeout)
     static bool binaryResponse;
     uint16_t commandStatus;
     uint32_t crc;
-    bool displayResponesSummary;
+    bool displayResponseSummary;
     int exitStatus;
     const char * firmwareVersionResponse = "Firmware Version: ";
     bool gotResponse;
@@ -1190,7 +1370,7 @@ int uploadFirmware(bool timeout)
     }
 
     // Determine if response summaries should be displayed
-    displayResponesSummary = (displayHandshakeDiagram == false)
+    displayResponseSummary = (displayHandshakeDiagram == false)
                              || ((displayHandshakeDiagram == true)
                                 && (displayBinaryCommand == false)
                                 && (displayBinaryCommandSummary == false)
@@ -1304,7 +1484,7 @@ int uploadFirmware(bool timeout)
                 }
 
                 // Reset the GNSS
-                printResponse = displayResponesSummary;
+                printResponse = displayResponseSummary;
                 exitStatus = resetAndSync();
             }
             break;
@@ -1374,7 +1554,7 @@ int uploadFirmware(bool timeout)
                 }
 
                 // Display the boot loader version
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Bootloader version: %d.%d.%d\r\n", response[9], response[10], response[11]);
 
                 // Determine if firmware updates are enabled
@@ -1506,7 +1686,7 @@ int uploadFirmware(bool timeout)
                 }
 
                 // Display the erased message
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Firmware erased\r\n");
 
                 // Determine if just erasing the flash
@@ -1575,7 +1755,7 @@ int uploadFirmware(bool timeout)
                 }
 
                 // Display the packet number and count
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Packet %d of %d\r\n", packetNumber, packetCount - 1);
 
                 // Account for this packet
@@ -1593,7 +1773,7 @@ int uploadFirmware(bool timeout)
                 }
 
                 // Firmware update complete
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Firmware upload complete, resetting GNSS\r\n");
 
                 // Send the GNSS reset command
@@ -1653,7 +1833,7 @@ int uploadFirmware(bool timeout)
                 }
 
                 // All done
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("GNSS reset\r\n");
 
                 // Display the firmware version
@@ -1677,6 +1857,32 @@ int uploadFirmware(bool timeout)
 }
 
 //----------------------------------------
+// Display the firmware version
+void displayFirmwareVersion()
+{
+    const char * lg290pFirmware = "$PQTMVERNO,LG290P03AANR";
+    size_t length;
+    int major;
+    int minor;
+
+    // Determine if the firmware version was returned
+    length = strlen(lg290pFirmware);
+    if (strncmp((char *)response, lg290pFirmware, length) != 0)
+        // Display the response upon error
+        printf("ERROR: Firmware version response: %s\r\n", response);
+
+    // Get the firmware version
+    else if (sscanf((char *)&response[length], "%2dA%2dS", &major, &minor) != 2)
+        // Display the error
+        printf("ERROR: Unable to parse firmware version from %s\r\n", response);
+
+    // Display the version number
+    else
+        printf("Current firmware version: %d.%d (%d)\r\n",
+               major, minor, (major * 100) + minor);
+}
+
+//----------------------------------------
 // Upload the firmware image through a directly connected UART
 //
 //      PC <---> GNSS
@@ -1686,13 +1892,14 @@ int directFirmwareUpload(bool timeout)
     ssize_t bytesRead;
     uint16_t commandStatus;
     uint32_t crc;
-    bool displayResponesSummary;
+    bool displayResponseSummary;
     int exitStatus;
-    static bool getResponse;
+    static bool getBinaryResponse;
     bool gotResponse;
     int length;
     const char * message;
     bool printResponse;
+    const char * resetCommand = "$PQTMSRR*4B\r\n";
 
     // Handle timeouts
     if (timeout && timeoutMessage && (state < DCFUS_MAX))
@@ -1703,7 +1910,7 @@ int directFirmwareUpload(bool timeout)
     }
 
     // Determine if response summaries should be displayed
-    displayResponesSummary = (displayHandshakeDiagram == false)
+    displayResponseSummary = (displayHandshakeDiagram == false)
                              || ((displayHandshakeDiagram == true)
                                 && (displayBinaryCommand == false)
                                 && (displayBinaryCommandSummary == false)
@@ -1713,7 +1920,7 @@ int directFirmwareUpload(bool timeout)
     // Get the response
     exitStatus = 0;
     gotResponse = false;
-    if (getResponse && (timeout == false))
+    if (getBinaryResponse && (timeout == false))
     {
         // Get the binary response
         gotResponse = getCommandResponse();
@@ -1736,6 +1943,23 @@ int directFirmwareUpload(bool timeout)
                 printf("Timeout!\r\n");
             exitStatus = -1;
             timeoutMessage = nullptr;
+            break;
+
+        // Display the firmware version if available
+        case DCFUS_FIRMWARE_VERSION:
+            // Attempt to get the firmware version response
+            if (timeout == false)
+                gotResponse = getNmeaResponse();
+            if (gotResponse)
+            {
+                displayFirmwareVersion();
+                exitStatus = writeData((const uint8_t *)resetCommand, strlen(resetCommand));
+                state = DCFUS_POWER_ON;
+            } else if (timeout)
+            {
+                exitStatus = writeData((const uint8_t *)resetCommand, strlen(resetCommand));
+                state = DCFUS_POWER_ON;
+            }
             break;
 
         // Wait for response to SYNC WORD 1
@@ -1825,7 +2049,6 @@ int directFirmwareUpload(bool timeout)
                     data[3] = 0x12;
                     exitStatus = writeData(data, sizeof(data));
                     responseLength = 0;
-                    timeoutMessage = "ERROR: Failed to receive RSP_WORD2";
                     state = DCFUS_SYNC;
                 }
             }
@@ -1861,6 +2084,7 @@ int directFirmwareUpload(bool timeout)
             {
                 // Error, discard any received data and try again
                 responseLength = 0;
+                state = DCFUS_POWER_ON;
             }
 
             // Sucessfully received RSP_WORD2 0x55FD5BA0 (little endian)
@@ -1876,7 +2100,7 @@ int directFirmwareUpload(bool timeout)
 
                 // Send the boot version command
                 exitStatus = getBootLoaderVersion();
-                getResponse = true;
+                getBinaryResponse = true;
                 responseLength = 0;
                 pollTimeoutUsec = 500 * 1000;
                 timeoutMessage = "ERROR: Timeout getting bootloader version command!\r\n";
@@ -1922,7 +2146,7 @@ int directFirmwareUpload(bool timeout)
                 }
 
                 // Display the boot loader version
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Bootloader version: %d.%d.%d\r\n", response[9], response[10], response[11]);
 
                 // Send the firmware information
@@ -2023,7 +2247,7 @@ int directFirmwareUpload(bool timeout)
                 }
 
                 // Display the erased message
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Firmware erased\r\n");
 
                 // Determine if just erasing the flash
@@ -2082,7 +2306,7 @@ int directFirmwareUpload(bool timeout)
                 }
 
                 // Display the packet number and count
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Packet %d of %d\r\n", packetNumber, packetCount - 1);
 
                 // Account for this packet
@@ -2092,12 +2316,14 @@ int directFirmwareUpload(bool timeout)
                 if (packetNumber < packetCount)
                 {
                     exitStatus = sendFirmwarePacket(packetNumber);
+                    if ((packetNumber + 1) == packetCount)
+                        pollTimeoutUsec = 30 * 1000 * 1000;
                     state = DCFUS_FIRMWARE_UPLOAD;
                     break;
                 }
 
                 // Firmware update complete
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("Firmware upload complete, resetting GNSS\r\n");
 
                 // Send the GNSS reset command
@@ -2145,7 +2371,7 @@ int directFirmwareUpload(bool timeout)
                 }
 
                 // All done
-                if (displayResponesSummary)
+                if (displayResponseSummary)
                     printf("GNSS reset\r\n");
                 exitStatus = BAIL_WITH_SUCCESS;
             }
@@ -2169,20 +2395,23 @@ int handleComPort()
     int numfds;
     fd_set readfds;
     struct timeval timeout;
+    const char * versionInfoCommand = "$PQTMVERNO*58\r\n";
 
-    maxfds = fileno(stdin);
-    if (maxfds < comPort)
-        maxfds = comPort;
 
     //Initialize the fd_sets
     FD_ZERO(&readfds);
     FD_SET(comPort, &readfds);
+    maxfds = fileno(stdin);
+    if (maxfds < comPort)
+        maxfds = comPort;
 
     // Send the initial command
     timeoutMessage = nullptr;
     exitStatus = 0;
-    if (directConnect == false)
+    if (useMicroprocessor)
         exitStatus = writeCommand(helloMicro);
+    else
+        exitStatus = writeData((const uint8_t *)versionInfoCommand, strlen(versionInfoCommand));
 
     // Wait for a response
     while (exitStatus == 0)
@@ -2202,7 +2431,7 @@ int handleComPort()
         }
 
         // Wait for power on to complete or connection to microprocessor
-        else if (directConnect)
+        else if (useMicroprocessor == false)
         {
             //Determine microprocessor output is available
             if (FD_ISSET(comPort, &currentfds))
@@ -2227,52 +2456,9 @@ int handleComPort()
 }
 
 //----------------------------------------
-// Use a microprocessor to help with the GNSS firmware upload
-//
-//      PC <---> Microprocessor <---> GNSS
+// Connect to the COM port
 //----------------------------------------
-int microprocessorGnssFirmwareUpgrade(const char * portName)
-{
-    int exitStatus;
-
-    exitStatus = 0;
-    do
-    {
-        // Attempt to open the COM Port
-        comPort = open(portName, O_RDWR, 0);
-        if (comPort < 0)
-        {
-            exitStatus = errno;
-            printf("ERROR: Failed to open COM Port %s\r\n", portName);
-            perror("");
-            break;
-        }
-
-        // Configure the COM Port
-        exitStatus = configureComPort(B115200);
-        if (exitStatus)
-            break;
-
-        // Display the handshake header
-        if (displayHandshakeDiagram)
-        {
-            size_t spaceCount = strlen(spaces) - strlen(dashes);
-            printf("%s%s%s\r\n", pcTop, &spaces[spaceCount], microprocessorTop);
-            printf("%s%s%s\r\n", pcLabel, &spaces[spaceCount], microprocessorLabel);
-        }
-
-        // Upload the firmware image
-        pollTimeoutUsec = 500 * 1000;
-        timeoutCount = 0;
-        exitStatus = handleComPort();
-    } while (0);
-    return exitStatus;
-}
-
-//----------------------------------------
-// Use a UART directly connected to the GNSS to do the GNSS firmware upgrade
-//----------------------------------------
-int gnssUartFirmwareUpgrade(const char * portName)
+int connectComPort(const char * portName)
 {
     int exitStatus;
 
@@ -2285,10 +2471,19 @@ int gnssUartFirmwareUpgrade(const char * portName)
         {
             // Attempt to open the COM Port
             comPort = open(portName, O_RDWR, 0);
-        } while (comPort < 0);
+        } while (waitForUart && (comPort < 0));
+
+        // Handle the connection error
+        if (comPort < 0)
+        {
+            exitStatus = errno;
+            printf("ERROR: Failed to open COM Port %s\r\n", portName);
+            perror("");
+            break;
+        }
 
         // Configure the COM Port
-        exitStatus = configureComPort(B460800);
+        exitStatus = configureComPort(baudrate);
         if (exitStatus)
             break;
 
@@ -2299,13 +2494,22 @@ int gnssUartFirmwareUpgrade(const char * portName)
             printf("%s%s%s\r\n", pcTop, &spaces[spaceCount], microprocessorTop);
             printf("%s%s%s\r\n", pcLabel, &spaces[spaceCount], microprocessorLabel);
         }
-
-        // Upload the firmware image
-        pollTimeoutUsec = 20 * 1000;
-        timeoutCount = 0;
-        exitStatus = handleComPort();
     } while (0);
     return exitStatus;
+}
+
+//----------------------------------------
+// Translate the B-value into a baudrate
+//----------------------------------------
+int baudrateLookup()
+{
+    // Walk the baudrate table
+    for (int index = 0; index < baudrateTableEntries; index++)
+        if (baudrateTable[index]._bValue == baudrate)
+            return baudrateTable[index]._baudrate;
+
+    // Unknown baudrate value
+    return 0;
 }
 
 //----------------------------------------
@@ -2323,21 +2527,24 @@ int main(int argc, char **argv)
     int index;
     const COMMAND_OPTION options[] =
     {
-        {false, &displayArguments,          "--display-arguments", "Display the command arguments"},
-        {false, &directConnect,             "--direct-connect", "Connect directly to GNSS UART, no microprocessor"},
-        {true,  &displayBinaryCommand,      "--display-binary-command", "Dump the binary command in hexadecimal and ASCII"},
-        {true,  &displayBinaryResponse,     "--display-binary-response", "Dump the binary response in hexadecimal and ASCII"},
-        {true,  &displayBinaryCommandSummary,   "--display-binary-summary", "Dump a summary of the binary command in hexadecimal and ASCII"},
-        {false, &displayBytesReceived,      "--display-bytes-received", "Display each of the received bytes"},
-        {true,  &displayCommand,            "--display-command", "Display the microprocessor commands"},
-        {true,  &displayCommandResponse,    "--display-command-response", "Display the microprocessor command responses"},
-        {true,  &displayHandshake,          "--display-handshake-diagram", "Display the handshake diagram"},
-        {false, &firmwareUpdateEnabled,     "--firmware-update-enabled", "Enable firmware updates"},
-        {false, &eraseOnly,                 "--erase-only", "Perform the flash erase and then exit"},
-        {false, &skipVersionCheck,          "--skip-version-check", "Don't display current firmware version"},
+        {0, 1, &baudrateSet,                "--baudrate", "Set the baudrate between the PC and microprocessor,\r\n                defaults to 115200, Example: --baudrate   19200"},
+        {0, 0, &displayArguments,           "--display-arguments", "Display the command arguments"},
+        {1, 0, &displayBinaryCommand,       "--display-binary-command", "Dump the binary command in hexadecimal and ASCII"},
+        {1, 0, &displayBinaryResponse,      "--display-binary-response", "Dump the binary response in hexadecimal and ASCII"},
+        {1, 0, &displayBinaryCommandSummary,"--display-binary-summary", "Dump a summary of the binary command in hexadecimal and ASCII"},
+        {0, 0, &displayBytesReceived,       "--display-bytes-received", "Display each of the received bytes"},
+        {1, 0, &displayCommand,             "--display-command", "Display the microprocessor commands"},
+        {1, 0, &displayCommandResponse,     "--display-command-response", "Display the microprocessor command responses"},
+        {1, 0, &displayHandshake,           "--display-handshake-diagram", "Display the handshake diagram"},
+        {0, 0, &firmwareUpdateEnabled,      "--firmware-update-enabled", "Enable firmware updates"},
+        {0, 0, &eraseOnly,                  "--erase-only", "Perform the flash erase and then exit"},
+        {0, 0, &skipVersionCheck,           "--skip-version-check", "Don't display current firmware version"},
+        {0, 0, &useMicroprocessor,          "--use-microprocessor", "Communicate with the GNSS through a microprocessor"},
+        {0, 0, &waitForUart,                "--wait-for-uart", "From GNSS system power on, wait for the UART to appear"},
     };
     const int optionCount = sizeof(options) / sizeof(options[0]);
     const char * portName;
+    bool validCommand;
 
     exitStatus = -1;
     do
@@ -2348,6 +2555,7 @@ int main(int argc, char **argv)
         portName = "";
         displayHandshakeDiagram = false;
         fileName = "";
+        validCommand = true;
         while (argc - argOffset)
         {
             bool match;
@@ -2366,6 +2574,49 @@ int main(int argc, char **argv)
                         *options[index]._optionBoolean = true;
                         argOffset += 1;
                         break;
+                    }
+                }
+
+                // Check for an integer value
+                if (match && options[index]._getBaudRate)
+                {
+                    int value;
+
+                    // Verify that at least one more argument is present
+                    if (argOffset >= argc)
+                    {
+                        printf("ERROR: Baudrate not specified\r\n");
+                        validCommand = false;
+                        break;
+                    }
+
+                    // Get the baudrate value
+                    if (sscanf(argv[argOffset], "%d", &value) == 0)
+                    {
+                        printf("ERROR: Invalid baudrate value, %s\r\n", argv[argOffset]);
+                        validCommand = false;
+                        break;
+                    }
+                    else
+                    {
+                        // Validate the baudrate value
+                        for (index = 0; index < baudrateTableEntries; index++)
+                        {
+                            if (baudrateTable[index]._baudrate == value)
+                            {
+                                baudrate = baudrateTable[index]._bValue;
+                                argOffset += 1;
+                                break;
+                            }
+                        }
+
+                        // Display the baudrate value error
+                        if (index >= baudrateTableEntries)
+                        {
+                            printf("ERROR: Invalid baudrate value, %d\r\n", value);
+                            validCommand = false;
+                            break;
+                        }
                     }
                 }
             }
@@ -2392,8 +2643,12 @@ int main(int argc, char **argv)
             }
         }
 
-        // Display the help text
+        // Check for a valid command
         if ((argCount < 2) || (argOffset != argc))
+            validCommand = false;
+
+        // Display the help text
+        if (validCommand == false)
         {
             printf("%s   [options]   <COM_Port%s%s>   <Firmware_File>\r\n",
                    argv[0],
@@ -2422,6 +2677,16 @@ int main(int argc, char **argv)
             printf("Port: %s\r\n", portName);
             printf("File name: %s\r\n", fileName);
         }
+
+        // The GNSS bootloader is always using 460800 as the baudrate, see
+        // Section 2.1 of the Quectel LG290P (03) Firmware Upgrade Guide
+        if (useMicroprocessor == false)
+            baudrate = B460800;
+
+        // Determine the baudrate between the PC and microprocessor,
+        // defaults to 115200
+        else if ((baudrateSet == false) && useMicroprocessor)
+            baudrate = B115200;
 
         // Determine if displaying the handshake diagram
         if (displayHandshake)
@@ -2511,16 +2776,23 @@ int main(int argc, char **argv)
         firmwareCrc32 = computeCrc32(firmwareCrc32, firmwarePackage, firmwareLength);
         printf("Firmware CRC32: 0x%08x\r\n", firmwareCrc32);
 
+        // Attempt to connect to the COM port
+        exitStatus = connectComPort(portName);
+        if (exitStatus)
+            break;
+
         // Attempt to upgrade the GNSS firmware
         packetNumber = -1;
-        if (directConnect)
-            exitStatus = gnssUartFirmwareUpgrade(portName);
+        timeoutCount = 0;
+        if (useMicroprocessor == false)
+            pollTimeoutUsec = 20 * 1000;
         else
-            exitStatus = microprocessorGnssFirmwareUpgrade(portName);
+            pollTimeoutUsec = 500 * 1000;
+        exitStatus = handleComPort();
     } while (0);
 
     // Done with the COM port
-    if (comPort)
+    if (comPort >= 0)
         close(comPort);
 
     // Release the mapped firmware file
@@ -2528,7 +2800,7 @@ int main(int argc, char **argv)
         munmap(firmwarePackage, firmwareLength);
 
     // Done with the firmware file
-    if (firmware)
+    if (firmware >= 0)
         close(firmware);
 
     // Convert the exitStatus value if necessary
